@@ -1,0 +1,6 @@
+# The Game Boy ROM file
+DMG_ROM.bin
+
+# Zig compiler folders
+zig-cache/
+zig-out/
