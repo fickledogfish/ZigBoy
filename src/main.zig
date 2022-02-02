@@ -10,9 +10,8 @@
 
 const z = @import("std");
 
-const instr = @import("instruction.zig");
 const Gameboy = @import("gameboy.zig").Gameboy;
-const Instruction = instr.Instruction;
+const Instruction = @import("instruction.zig").Instruction;
 
 const SCREEN = .{
     .width = 160,

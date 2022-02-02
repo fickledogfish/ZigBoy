@@ -1,8 +1,8 @@
-const components = @import("components.zig");
+const chips = @import("chips.zig");
 
-const RamChip = components.Sharp_LH5264N4;
-const VramChip = components.Sharp_LH5264N4;
-const CpuChip = components.Sharp_LR35902;
+const RamChip = chips.Sharp_LH5264N4;
+const VramChip = chips.Sharp_LH5264N4;
+const CpuChip = chips.Sharp_LR35902;
 
 pub const Gameboy = struct {
     const Self = @This();

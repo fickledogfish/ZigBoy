@@ -1,6 +1,6 @@
 const z = @import("std");
 
-const Instruction = @import("instruction.zig").Instruction;
+const Instruction = @import("../instruction.zig").Instruction;
 
 const RAM_SIZE: usize = 8 * 1024; // 8KB (0xC000 -> 0xDFFF)
 

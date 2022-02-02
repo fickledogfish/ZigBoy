@@ -4,174 +4,16 @@ const testing = z.testing;
 const expect = testing.expect;
 const expectEq = testing.expectEqual;
 
+const FlagRegister = @import("flag_register.zig").FlagRegister;
+const Registers = @import("registers.zig").Registers;
+const Register8 = @import("register8.zig").Register8;
+const Register16 = @import("register16.zig").Register16;
 const Sharp_LH5264N4 = @import("sharp_lh5264n4.zig").Sharp_LH5264N4;
+const TOTAL_REGISTER_SIZE = @import("registers.zig").TOTAL_REGISTER_SIZE;
 
-const Instruction = @import("instruction.zig").Instruction;
+const Instruction = @import("../instruction.zig").Instruction;
 
 const CPU_CLOCK: usize = 4 * 1024 * 1024; // 4 MHz
-
-// The 8-bit registers of the Gameboy's CPU.
-//
-// You may know that some of these are usually combined into a single 16-bit
-// register. In this emulator, this is done manually in the (read,write)88
-// functions from the Sharp_LR35902 struct, where you can input two Register8s.
-pub const Register8 = enum(usize) {
-    a, // usually the target for some instructions
-    f, // see FlagRegister
-    b,
-    c,
-    d,
-    e,
-    h,
-    l,
-};
-
-// The 16-bit registers of the Gameboy's CPU. For the combinations of Register8
-// into a single 16-bit register, check the (read,write)88 functions in the
-// Sharp_LR35902 struct.
-pub const Register16 = enum(usize) {
-    sp, // Stack Pointer (points to the current stack position)
-    pc, // Program Counter (points to the next instruction to be executed)
-};
-
-// Number of bytes needed to store all registers in a continuous array.
-//
-//     (number of 8-bit registers) + (number of 16-bit registers) * 2
-const TOTAL_REGISTER_SIZE: usize = @typeInfo(Register8).Enum.fields.len *
-    @sizeOf(u8) + @typeInfo(Register16).Enum.fields.len * @sizeOf(u16);
-
-// A struct to conveniently access individual registers. You should be able to
-// cast the register array to this.
-pub const Registers = packed struct {
-    const Self = @This();
-
-    a: u8,
-    f: FlagRegister,
-    b: u8,
-    c: u8,
-    d: u8,
-    e: u8,
-    h: u8,
-    l: u8,
-
-    sp: u16,
-    pc: u16,
-
-    pub fn format(
-        value: Self,
-        comptime fmt: []const u8,
-        _: z.fmt.FormatOptions,
-        out_stream: anytype,
-    ) !void {
-        inline for (@typeInfo(Self).Struct.fields) |f| {
-            try out_stream.writeAll(fmt);
-            try out_stream.writeAll(".");
-            try out_stream.writeAll(f.name);
-            try out_stream.writeAll(" = ");
-
-            if (f.field_type == u8) {
-                try z.fmt.format(out_stream, "{b:0>8}", .{
-                    @field(value, f.name),
-                });
-            } else if (f.field_type == u16) {
-                try z.fmt.format(out_stream, "{b:0>16}", .{
-                    @field(value, f.name),
-                });
-            } else {
-                try z.fmt.format(out_stream, "{}", .{
-                    @field(value, f.name),
-                });
-            }
-
-            try out_stream.writeAll(",\n");
-        }
-    }
-};
-
-comptime {
-    // Just making sure I didn't mess up in either of these places.
-    if (!(@sizeOf(Registers) == TOTAL_REGISTER_SIZE)) {
-        @compileError("Size of Registers does not match the total " ++
-            "number of bytes used to store all registers");
-    }
-
-    // Make sure the order of the registers is correct
-    const regs_members = @typeInfo(Registers).Struct.fields;
-
-    // Check the 8-bit registers
-    inline for (@typeInfo(Register8).Enum.fields) |f, i| {
-        const reg8_f = f.name;
-        const regs_m = regs_members[i].name;
-
-        if (!z.mem.eql(u8, reg8_f, regs_m)) {
-            @compileError("Out of order registers: Reg8." ++
-                reg8_f ++
-                ", Regs." ++
-                regs_m);
-        }
-    }
-
-    // Now the 16-bit ones
-    inline for (@typeInfo(Register16).Enum.fields) |f, idx| {
-        // Pretend we're still using the same counter as the 8-bit registers
-        const i = idx + @typeInfo(Register8).Enum.fields.len;
-
-        const reg16_f = f.name;
-        const regs_m = regs_members[i].name;
-
-        if (!z.mem.eql(u8, reg16_f, regs_m)) {
-            @compileError("Out of order registers: Reg8." ++
-                reg16_f ++
-                ", Regs." ++
-                regs_m);
-        }
-    }
-}
-
-// A struct to conveniently access the F register, which is special because it
-// stores flags for varios math operations:
-//
-//     ZNHC 0000
-//     |||| |--|
-//     ||||   |_ Unused, should always be zero
-//     ||||
-//     ||||_____ Carry: set if a carry occurred in the last math operation of
-//     |||       if the register A is the smallest value of a CP instruction
-//     |||
-//     |||______ Half Carry: set if a carry occurred from the lower nibble in
-//     ||        the last math operation
-//     ||
-//     ||_______ Subtract: set if a subtraction was performed in the last math
-//     |         instruction
-//     |
-//     |________ Zero: set if the result of a math operation is zero or if two
-//               values match in a CP instruction
-pub const FlagRegister = packed struct {
-    nibble: u4,
-
-    carry: bool,
-    half_carry: bool,
-    subtract: bool,
-    zero: bool,
-
-    pub fn format(
-        self: FlagRegister,
-        comptime _: []const u8,
-        _: z.fmt.FormatOptions,
-        out_stream: anytype,
-    ) !void {
-        try out_stream.writeAll(if (self.zero) "Z" else "z");
-        try out_stream.writeAll(if (self.subtract) "N" else "n");
-        try out_stream.writeAll(if (self.half_carry) "H" else "h");
-        try out_stream.writeAll(if (self.carry) "C" else "c");
-    }
-};
-
-comptime {
-    expectEq(@sizeOf(FlagRegister), @sizeOf(u8)) catch |err| {
-        @compileError(err);
-    };
-}
 
 // The heart of it all. This chip includes:
 //
@@ -187,7 +29,7 @@ comptime {
 pub const Sharp_LR35902 = struct {
     const Self = @This();
 
-    pub const BOOT_ROM: []const u8 = @embedFile("../DMG_ROM.bin");
+    pub const BOOT_ROM: []const u8 = @embedFile("../../DMG_ROM.bin");
 
     const l = z.log.scoped(.sharp_lr35902);
 
