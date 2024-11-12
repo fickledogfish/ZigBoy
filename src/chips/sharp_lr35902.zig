@@ -5,6 +5,7 @@ const expect = testing.expect;
 const expectEq = testing.expectEqual;
 
 const FlagRegister = @import("flag_register.zig").FlagRegister;
+const MmappedAddress = @import("mmapped_address.zig").MmappedAddress;
 const Registers = @import("registers.zig").Registers;
 const Register8 = @import("register8.zig").Register8;
 const Register16 = @import("register16.zig").Register16;
@@ -29,7 +30,7 @@ const CPU_CLOCK: usize = 4 * 1024 * 1024; // 4 MHz
 pub const Sharp_LR35902 = struct {
     const Self = @This();
 
-    pub const BOOT_ROM: []const u8 = @embedFile("../../DMG_ROM.bin");
+    pub const BOOT_ROM: []const u8 = @embedFile("../DMG_ROM.bin");
 
     const l = z.log.scoped(.sharp_lr35902);
 
@@ -76,7 +77,7 @@ pub const Sharp_LR35902 = struct {
     }
 
     inline fn registers(self: *Self) *Registers {
-        return @ptrCast(*Registers, &self.rgs);
+        return @ptrCast(*Registers, @alignCast(@alignOf(*Registers), &self.rgs));
     }
 
     inline fn flagRegister(self: *Self) *FlagRegister {
@@ -125,65 +126,28 @@ pub const Sharp_LR35902 = struct {
         reg.* = val;
     }
 
-    const MmappedAddress = enum {
-        // 16KB ROM bank 0 {
-        RestartAndInterruptVectors,
-        CartridgeHeader,
-        CartridgeROMBank0,
-        // }
-        CartridgeROMSwitchableBanks, // Switchable via MBC (if any)
-        CharacterRAM,
-        BGMapData1,
-        BGMapData2,
-        ExternalRAM, // Cartridge RAM (if available, switchable bank)
-        WorkRAMBank0, // Internal RAM, Bank 0
-        WorkRAMBank1, // Internal RAM, Bank 1 (1-7 in CGB mode)
-        EchoRAM,
-        SpriteAttributeTable, // Object Attribute Memory (OAM)
-        Unusable,
-        IORegisters,
-        HighRAM, // Zero Page
-        InterruptsEnableRegister,
-    };
-
     fn mmap(_: Self, addr: usize) MmappedAddress {
-        return switch (addr) {
-            0x0000...0x00FF => .RestartAndInterruptVectors,
-            0x0100...0x014F => .CartridgeHeader,
-            0x0150...0x3FFF => .CartridgeROMBank0,
-            0x4000...0x7FFF => .CartridgeROMSwitchableBanks,
+        return MmappedAddress.fromAddress(addr) catch {
+            // Because I don't want to use an allocator just for this.
+            var buf: [100]u8 = undefined;
 
-            0x8000...0x97FF => .CharacterRAM,
-            0x9800...0x9BFF => .BGMapData1,
-            0x9C00...0x9FFF => .BGMapData2,
-
-            0xA000...0xBFFF => .ExternalRAM,
-
-            0xC000...0xCFFF => .WorkRAMBank0,
-            0xD000...0xDFFF => .WorkRAMBank1,
-
-            0xE000...0xFDFF => .EchoRAM,
-
-            0xFE00...0xFE9F => .SpriteAttributeTable,
-
-            0xFEA0...0xFEFF => .Unusable,
-
-            0xFF00...0xFF7F => .IORegisters,
-            0xFF80...0xFFFE => .HighRAM,
-            0xFFFF => .InterruptsEnableRegister,
-
-            else => unreachable,
+            @panic(z.fmt.bufPrint(
+                &buf,
+                "Unknown address passed to mmap: 0x{X}",
+                .{addr},
+            ) catch unreachable);
         };
     }
 
     fn mmapRead(_: Self, _: usize) u8 {
-        unreachable;
+        unreachable; // TODO: unimplemented
     }
 
     fn mmapWrite(self: *Self, addr: usize, val: u8) void {
         switch (self.mmap(addr)) {
-            .BGMapData2 => self.vram.data[addr - 0x8000] = val,
+            .bg_map_data_2 => self.vram.data[addr - 0x8000] = val,
 
+            // TODO: can it write to other addrs?
             else => unreachable,
         }
     }
@@ -257,7 +221,7 @@ pub const Sharp_LR35902 = struct {
     }
 
     fn execInstr(self: *Self, instr: Instruction, instrs: []const u8) void {
-        l.warn("{}\n", .{instr});
+        l.warn("{}", .{instr});
         switch (instr.class) {
             .add => {
                 switch (instr.dst.?) {
@@ -293,9 +257,7 @@ pub const Sharp_LR35902 = struct {
                 const num = num: {
                     break :num switch (instr.src.?) {
                         .r8 => |reg| self.read8(reg),
-
-                        //.r16 => |hl_ptr| unreachable, // TODO: unimplemented
-                        .r16 => |_| unreachable, // TODO: unimplemented
+                        .r16 => |_| unreachable, // unimplemented
 
                         else => unreachable,
                     };
@@ -315,7 +277,10 @@ pub const Sharp_LR35902 = struct {
                 self.inc(.pc, 1);
             },
 
-            else => unreachable,
+            else => {
+                l.warn("{}", .{instr});
+                unreachable;
+            },
         }
     }
 
@@ -461,7 +426,7 @@ pub const Sharp_LR35902 = struct {
     ) !void {
         try out_stream.writeAll(@typeName(Self));
         try out_stream.writeAll(" {\n");
-        try @ptrCast(*const Registers, &value.rgs).format(
+        try @ptrCast(*const Registers, @alignCast(@alignOf(*Registers), &value.rgs)).format(
             "\t",
             options,
             out_stream,

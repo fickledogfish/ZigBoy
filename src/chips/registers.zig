@@ -60,7 +60,11 @@ pub const Registers = packed struct {
 
 comptime {
     // Just making sure I didn't mess up in either of these places.
-    if (@sizeOf(Registers) != TOTAL_REGISTER_SIZE) {
+    if (@bitSizeOf(Registers) / 8 != TOTAL_REGISTER_SIZE) {
+        @compileLog("@sizeOf(Registers) = ", @sizeOf(Registers));
+        @compileLog("TOTAL_REGISTER_SIZE = ", TOTAL_REGISTER_SIZE);
+        @compileLog("@sizeOf(FlagRegister) = ", @sizeOf(FlagRegister));
+
         @compileError("Size of Registers does not match the total " ++
             "number of bytes used to store all registers");
     }

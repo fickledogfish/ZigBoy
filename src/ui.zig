@@ -22,7 +22,7 @@ pub const Gui = struct {
     };
 
     pub fn init(
-        title: [:0]const u8,
+        title: [*c]const u8,
         width: c_int,
         height: c_int,
         options: InitOptions,

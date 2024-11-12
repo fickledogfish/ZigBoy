@@ -38,6 +38,12 @@ pub const Instruction = struct {
 
     cond: ?JumpCondition = null,
 
+    // TODO: Better size?
+    //
+    // This is used in the stringify and format functions for temporary buffers
+    // to store Target names and stuff.
+    const TEMP_BUFFER_SIZE = 100;
+
     fn fill_immediate(
         self: *Self,
         comptime field_name: []const u8,
@@ -97,8 +103,7 @@ pub const Instruction = struct {
                 str.append(z.ascii.toUpper(ch));
             }
         } else if (self.dst) |dst| {
-            // TODO: better size
-            var buf: [100]u8 = undefined;
+            var buf: [TEMP_BUFFER_SIZE]u8 = undefined;
 
             var dst_str = dst.stringfy(
                 &buf,
@@ -114,8 +119,7 @@ pub const Instruction = struct {
         if (self.src) |src| {
             str.append(',');
 
-            // TODO: better size
-            var buf: [100]u8 = undefined;
+            var buf: [TEMP_BUFFER_SIZE]u8 = undefined;
 
             var src_str = src.stringfy(
                 &buf,
@@ -137,8 +141,7 @@ pub const Instruction = struct {
         _: z.fmt.FormatOptions,
         out_stream: anytype,
     ) !void {
-        // TODO: what number to make it?
-        var buffer: [100]u8 = undefined;
+        var buffer: [TEMP_BUFFER_SIZE]u8 = undefined;
         var str = self.stringfy(&buffer);
 
         try out_stream.writeAll("0x");
